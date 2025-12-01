@@ -56,8 +56,8 @@ $(LIB)/HelperArrays1D.cpp \
 $(LIB)/waveprop1D.cpp \
 $(LIB)/single_time_step.cpp \
 
-main.exe: $(OBJECTS) $(SOURCES)
-	$(LINK) $(OBJECTS) -o main.exe
+main.out: $(OBJECTS) $(SOURCES)
+	$(LINK) $(OBJECTS) -o main.out
 
 .cpp.o: ; $(COMPILE) $*.cpp -o $*.o
 
