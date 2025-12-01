@@ -31,7 +31,7 @@ def parse_ini_parameters(output_directory,
 
     import configparser;
 
-    config = configparser.SafeConfigParser();
+    config = configparser.RawConfigParser();
     config.read( parameters_file );
     num_sections = len(config.sections());
 

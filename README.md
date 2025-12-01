@@ -1,0 +1,2 @@
+ This is an assignment from Iowa State University's Math 6670 course where the task was to use the existing code to write a 1D wave prop. solver for the Euler equation for the shock tube case. 
+ Originally written by James Rossmanith, modifed by Phillip Misterman

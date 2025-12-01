@@ -62,4 +62,4 @@ main.out: $(OBJECTS) $(SOURCES)
 .cpp.o: ; $(COMPILE) $*.cpp -o $*.o
 
 clean:
-	rm -f $(OBJECTS) *.exe *.pdf; rm -f -r output; rm -f -r output_combined; rm -f -r __pycache__;
+	rm -f $(OBJECTS) *.out *.pdf; rm -f -r output; rm -f -r output_combined; rm -f -r __pycache__;
