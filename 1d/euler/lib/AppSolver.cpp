@@ -6,7 +6,7 @@
 #include <stdio.h>
 
 // gravitational constant
-const double grav = 1.0;
+const double gamma_gas = 1.4;
 
 // -------------------------------------------------------------------------- //
 double AppSolver::Solver(const Params1D& params1D,
@@ -17,107 +17,129 @@ double AppSolver::Solver(const Params1D& params1D,
                          DblArray& amdq,
                          DblArray& apdq)
 {
-  // Roe averages
-  const double hl = QL.get(1); 
-  const double ul = QL.get(2)/hl; 
+  // Assume Euler 3 conserved variables
+  // Q = [rho, rho*u, E]
+  // Gas constant is defined above
+  
+  // Left & right conserved primitive variables
+  const double rhoL = QL.get(1);
+  const double mL   = QL.get(2); 
+  const double EL   = QL.get(3); 
    
-  const double hr = QR.get(1);
-  const double ur = QR.get(2)/hr;
+  const double rhoR = QR.get(1);
+  const double mR   = QR.get(2);
+  const double ER   = QR.get(3);
 
-  const double hav = 0.5*(hl + hr);
-  const double uav = (sqrt(hl)*ul + sqrt(hr)*ur)/(sqrt(hr)+sqrt(hl));
+  const double uL = mL/rhoL;
+  const double uR = mR/rhoR;
 
-  // speeds
-  s.fetch(1) = uav - sqrt(grav*hav);
-  s.fetch(2) = uav + sqrt(grav*hav);
-  double smax = dog_math::Max(fabs(s.get(1)),fabs(s.get(2)));
+  const double pL = (gamma_gas - 1.0) * (EL - 0.5 * rhoL * uL * uL);
+  const double pR = (gamma_gas - 1.0) * (ER - 0.5 * rhoR * uR * uR);
 
-  // right eigenvectors
-  DblArray rmat(2,2);
+  const double HL = (EL + pL) / rhoL;  // total enthalpy left
+  const double HR = (ER + pR) / rhoR;  // total enthalpy right
 
-  rmat.fetch(1,1) = 1.0;
-  rmat.fetch(2,1) = s.get(1);
+  // Roe-averaged states
+  const double sqL   = sqrt(rhoL);
+  const double sqR   = sqrt(rhoR);
+  const double denom = sqL + sqR;
 
-  rmat.fetch(1,2) = 1.0;
-  rmat.fetch(2,2) = s.get(2);
+  const double uHat = (sqL * uL + sqR * uR) / denom;
+  const double HHat = (sqL * HL + sqR * HR) / denom;
 
-  // left eigenvectors
-  DblArray lmat(2,2);
+  const double cHat = sqrt((gamma_gas - 1.0) * (HHat - 0.5 * uHat * uHat));
 
-  lmat.fetch(1,1) = s.get(2)/(s.get(2)-s.get(1));
-  lmat.fetch(1,2) = -1.0/(s.get(2)-s.get(1));
 
-  lmat.fetch(2,1) = -s.get(1)/(s.get(2)-s.get(1));
-  lmat.fetch(2,2) = 1.0/(s.get(2)-s.get(1));
+  // wave speeds
+  s.fetch(1) = uHat - cHat;
+  s.fetch(2) = uHat;
+  s.fetch(3) = uHat + cHat;
 
-  // wave strengths
-  DblArray alpha(2); alpha.setall(0.0);
-  for (int m1=1; m1<=2; m1++)
-    for (int m2=1; m2<=2; m2++)
-      { alpha.fetch(m1) += lmat.get(m1,m2)*(QR.get(m2)-QL.get(m2)); }
+  double smax = std::fabs(s.get(1));
+  smax = dog_math::Max(smax, std::fabs(s.get(2)));
+  smax = dog_math::Max(smax, std::fabs(s.get(3)));
 
-  // waves
+  // Right eigenvectors
+  // r1 = [1, u-c, H-u*c]^T
+  // r2 = [1,   u, 0.5*u^2]^T
+  // r3 = [1, u+c, H+u*c]^T
+  double R[3][3];
+
+  R[0][0] = 1.0;
+  R[1][0] = uHat - cHat;
+  R[2][0] = HHat - uHat * cHat;
+
+  R[0][1] = 1.0;
+  R[1][1] = uHat;
+  R[2][1] = 0.5 * uHat * uHat;
+
+  R[0][2] = 1.0;
+  R[1][2] = uHat + cHat;
+  R[2][2] = HHat + uHat * cHat;
+
+  // Decompose jump deltaQ = Q_R - Q_L into waves
+  double dQ[3];
+  dQ[0] = rhoR - rhoL;
+  dQ[1] = mR - mL;
+  dQ[2] = ER - EL;
+
+  // Solve R * alpha = dQ via small 3x3 Gaussian elimination
+  double A[3][4];
+  for (int i = 0; i < 3; ++i)
+  {
+      for (int j = 0; j < 3; ++j)
+          A[i][j] = R[i][j];
+      A[i][3] = dQ[i];
+  }
+
+  for (int i = 0; i < 3; ++i)
+  {
+      double piv = A[i][i];
+      if (std::fabs(piv) < 1e-14)
+          piv = (piv >= 0.0 ? 1e-14 : -1e-14);
+
+      for (int j = i; j < 4; ++j)
+          A[i][j] /= piv;
+
+      for (int k = 0; k < 3; ++k)
+      {
+          if (k == i) continue;
+          double fac = A[k][i];
+          for (int j = i; j < 4; ++j)
+              A[k][j] -= fac * A[i][j];
+      }
+  }
+
+  double alpha[3];
+  for (int i = 0; i < 3; ++i)
+      alpha[i] = A[i][3];
+
+  // Build waves and fluctuations
   wave.setall(0.0);
-  for (int m1=1; m1<=2; m1++)
-    for (int m2=1; m2<=2; m2++)
-      { wave.fetch(m1,m2) = alpha.get(m2)*rmat.get(m1,m2); } 
-
-  // fluctuations
   amdq.setall(0.0);
   apdq.setall(0.0);
-  for (int m2=1; m2<=2; m2++)
-    {
-      if (s.get(m2)<=0.0)
-        { 
-          for (int m1=1; m1<=2; m1++)
-            { amdq.fetch(m1) += s.get(m2)*wave.get(m1,m2); }
-        }
-      else
-        { 
-          for (int m1=1; m1<=2; m1++)
-            { apdq.fetch(m1) += s.get(m2)*wave.get(m1,m2); }
-        }
-    }
 
-  // entropy fix
-  if (params1D.get_use_entropy_fix())
-    {
-      DblArray QM(2);
-      QM.fetch(1) = QL.get(1) + wave.get(1,1);
-      QM.fetch(2) = QL.get(2) + wave.get(2,1);
+  for (int p = 0; p < 3; ++p)       // p = wave index: 0,1,2
+  {
+      const double sp = s.get(p + 1);   // corresponding speed
 
-      // first wave
+      for (int m = 0; m < 3; ++m)    // m = equation index: 0,1,2
       {
-        double eig1L = QL.get(2)/QL.get(1) - sqrt(grav*QL.get(1));
-        double eig1R = QM.get(2)/QM.get(1) - sqrt(grav*QM.get(1));
-        double beta1 = (eig1R - s.get(1))/(eig1R - eig1L);
-        if (eig1L<0.0 && eig1R>0.0)
+          const double Wmp = alpha[p] * R[m][p];  // component of wave p in eqn m
+
+          // In this code base, wave(m+1, p+1) = component m of wave p
+          wave.fetch(m + 1, p + 1) = Wmp;
+
+          if (sp < 0.0)
           {
-            for (int m=1; m<=2; m++)
-              { 
-                apdq.fetch(m) += ( eig1R*(1.0-beta1) - dog_math::Max(0.0, s.get(1)) ) * wave.get(m,1);
-                amdq.fetch(m) += ( eig1L*(beta1) - dog_math::Min(0.0, s.get(1)) ) * wave.get(m,1);
-              }
+              amdq.fetch(m + 1) += sp * Wmp;
+          }
+          else if (sp > 0.0)
+          {
+              apdq.fetch(m + 1) += sp * Wmp;
           }
       }
+  }
 
-      // second wave
-      {
-        double eig2L = QM.get(2)/QM.get(1) + sqrt(grav*QM.get(1));;
-        double eig2R = QR.get(2)/QR.get(1) + sqrt(grav*QR.get(1));;
-        double beta2 = (eig2R - s.get(2))/(eig2R - eig2L);
-        if (eig2L<0.0 && eig2R>0.0)
-          {
-            for (int m=1; m<=2; m++)
-              { 
-                apdq.fetch(m) += ( eig2R*(1.0-beta2) - dog_math::Max(0.0, s.get(2)) ) * wave.get(m,2);
-                amdq.fetch(m) += ( eig2L*(beta2) - dog_math::Min(0.0, s.get(2)) ) * wave.get(m,2);
-              }
-          }
-      }
-    }
-
-  // return local max speed
   return smax;
 }
-// -------------------------------------------------------------------------- //
