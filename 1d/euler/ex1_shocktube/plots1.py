@@ -11,72 +11,88 @@ def plots1(output_directory,        # directory where output data lives
     import matplotlib
     import matplotlib.pyplot as plt
     import numpy as np
-    matplotlib.rcParams.update({'font.size': 16, 'font.family': 'sans-serif'});
-    matplotlib.rcParams.update({'text.usetex': 'true'});
-    import pylab
-    import sys;
-    sys.path.append('../lib/')
-    import shllw_exact_rs as exact_rs
+    matplotlib.rcParams.update({'font.size': 16, 'font.family': 'sans-serif'})
+    matplotlib.rcParams.update({'text.usetex': 'true'})
 
-    # time string
-    time_string = '%4.2f' % time;
+    # ---------------- basic info ----------------
+    time_string = '%4.2f' % time
+    nframe_str  = f'{nframe:03}'
 
-    # frame string
-    nframe_str = f'{nframe:03}';
+    Nx    = ini_params['Nx']
+    xlow  = ini_params['xlow']
+    xhigh = ini_params['xhigh']
+    Neqn  = ini_params['Neqn']
+    dx    = (xhigh - xlow) / Nx
 
-    Nx    = ini_params['Nx' ];
-    xlow  = ini_params['xlow'];
-    xhigh = ini_params['xhigh'];
-    Neqn  = ini_params['Neqn'];
-    dx  = (xhigh-xlow)/Nx;
+    assert Neqn == 3, "Euler solver should have Neqn = 3 (rho, rho*u, E)"
 
-    # grab left and right states and solve exact Riemann problem
-    hL = qsoln[0,0];
-    hR = qsoln[Nx-1,0];
-    uL = qsoln[0,1]/hL;
-    uR = qsoln[Nx-1,1]/hR;
-    grav = 1.0;
-    h_ex, u_ex = exact_rs.exact_riemann_solution(0.0,hL,uL,hR,uR,xc,time,grav);
+    gamma_gas = 1.4
 
-    # plot 1
-    plt.figure(1);
-    plt.clf();
-    plt.gca().set_aspect('auto');
-    plt.gca().set_xlim([xc[0]-0.5*dx,xc[Nx-1]+0.5*dx]);
-    plt.plot(xc,qsoln[:,0],'bo',linewidth=2.0,label='WPM');
-    plt.plot(xc,h_ex,'r-',linewidth=2.0,label='exact');
-    plt.grid(True);
-    title = r"Height: $h(t,x)$ at $t = " + time_string + r"$";
-    plt.title(title);
-    plt.xlabel(r'$x$');
-    plt.ylabel(r'$h$');
-    plt.gca().set_xlim([xlow,xhigh])
-    plt.legend();
+    # qsoln shape: (Nx, Neqn)
+    rho = qsoln[:,0]
+    m   = qsoln[:,1]
+    E   = qsoln[:,2]
 
-    if (show_all_frames_at_once==False):
-        plt.draw();
+    u = m / rho
+    p = (gamma_gas - 1.0) * (E - 0.5 * rho * u * u)
+
+    # ---------------- density plot ----------------
+    plt.figure(1)
+    plt.clf()
+    plt.gca().set_aspect('auto')
+    plt.gca().set_xlim([xc[0] - 0.5*dx, xc[Nx-1] + 0.5*dx])
+    plt.plot(xc, rho, 'bo', linewidth=2.0, label='WPM')
+    plt.grid(True)
+    title = r"Density: $\rho(t,x)$ at $t = " + time_string + r"$"
+    plt.title(title)
+    plt.xlabel(r'$x$')
+    plt.ylabel(r'$\rho$')
+    plt.gca().set_xlim([xlow, xhigh])
+    plt.legend()
+
+    if not show_all_frames_at_once:
+        plt.draw()
     else:
-        plt.savefig('height_'+nframe_str\
-                   +'.pdf', format='pdf', bbox_inches='tight');
+        plt.savefig('density_' + nframe_str + '.pdf',
+                    format='pdf', bbox_inches='tight')
 
-    # plot 2
-    plt.figure(2);
-    plt.clf();
-    plt.gca().set_aspect('auto');
-    plt.gca().set_xlim([xc[0]-0.5*dx,xc[Nx-1]+0.5*dx]);
-    plt.plot(xc,qsoln[:,1]/qsoln[:,0],'bo',linewidth=2.0,label='WPM');
-    plt.plot(xc,u_ex,'r-',linewidth=2.0,label='exact')
-    plt.grid(True);
-    title = r"Velocity: $u(t,x)$ at $t = " + time_string + r"$";
-    plt.title(title);
-    plt.xlabel(r'$x$');
-    plt.ylabel(r'$u$');
-    plt.gca().set_xlim([xlow,xhigh])
-    plt.legend();
+    # ---------------- velocity plot ----------------
+    plt.figure(2)
+    plt.clf()
+    plt.gca().set_aspect('auto')
+    plt.gca().set_xlim([xc[0] - 0.5*dx, xc[Nx-1] + 0.5*dx])
+    plt.plot(xc, u, 'bo', linewidth=2.0, label='WPM')
+    plt.grid(True)
+    title = r"Velocity: $u(t,x)$ at $t = " + time_string + r"$"
+    plt.title(title)
+    plt.xlabel(r'$x$')
+    plt.ylabel(r'$u$')
+    plt.gca().set_xlim([xlow, xhigh])
+    plt.legend()
 
-    if (show_all_frames_at_once==False):
-        plt.draw();
+    if not show_all_frames_at_once:
+        plt.draw()
     else:
-        plt.savefig('velocity_'+nframe_str\
-                   +'.pdf', format='pdf', bbox_inches='tight');
+        plt.savefig('velocity_' + nframe_str + '.pdf',
+                    format='pdf', bbox_inches='tight')
+
+    # ---------------- pressure plot ----------------
+    plt.figure(3)
+    plt.clf()
+    plt.gca().set_aspect('auto')
+    plt.gca().set_xlim([xc[0] - 0.5*dx, xc[Nx-1] + 0.5*dx])
+    plt.plot(xc, p, 'bo', linewidth=2.0, label='WPM')
+    plt.grid(True)
+    title = r"Pressure: $p(t,x)$ at $t = " + time_string + r"$"
+    plt.title(title)
+    plt.xlabel(r'$x$')
+    plt.ylabel(r'$p$')
+    plt.gca().set_xlim([xlow, xhigh])
+    plt.legend()
+
+    if not show_all_frames_at_once:
+        plt.draw()
+    else:
+        plt.savefig('pressure_' + nframe_str + '.pdf',
+                    format='pdf', bbox_inches='tight')
 #----------------------------------------------------------
